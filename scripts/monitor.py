@@ -12,7 +12,7 @@ def log(logfile, msg):
 def getInitialCandle(logfile):
   global currency
   global margin_rate
-  global high_price
+  global last_high_price
   global threshold_price 
 
   ## Upbit REST api
@@ -26,19 +26,20 @@ def getInitialCandle(logfile):
   candle_date_time_kst=""
   tmp = json.loads(res.text)
   for dict in tmp:
-   if high_price < dict['high_price']:
+   high_price = dict['high_price']
+   if last_high_price < high_price:
+     last_high_price = high_price
      candle_date_time_kst=dict['candle_date_time_kst']
-     high_price = dict['high_price']
 
-  log(logfile, "High Price: " + str(high_price) + " at candle " + str(candle_date_time_kst).replace("T", " "))
-  threshold_price = high_price * (1.0 - margin_rate)
+  log(logfile, "High Price: " + str(last_high_price) + " at candle " + str(candle_date_time_kst).replace("T", " "))
+  threshold_price = last_high_price * (1.0 - margin_rate)
   log(logfile, "Threshold Price: " + str(threshold_price))
   logfile.flush()
 
 def monitor(logfile):
   global currency
   global margin_rate
-  global high_price
+  global last_high_price
   global threshold_price 
   global last_low_price
 
@@ -53,24 +54,33 @@ def monitor(logfile):
   tmp = json.loads(res.text)
   #print(type(tmp))
   #print(len(tmp))
-  found = False
+  found1 = False
   for dict in tmp:
-    if threshold_price > dict['low_price']:
-      low_price = dict['low_price']
-      if last_low_price == 0.0 or last_low_price != low_price:
+    low_price = dict['low_price']
+    if threshold_price > low_price:
+      if last_low_price == 0.0 or last_low_price > low_price:
         last_low_price = low_price
-        log(logfile, str(dict['candle_date_time_kst']).replace("T", " ") \
-  	      + ": " + str(dict['low_price']) + " (" + str(1.0 - (low_price / high_price)) + ")")
-        found = True
-    if high_price < dict['high_price']:
-      candle_date_time_kst=dict['candle_date_time_kst']
-      high_price = dict['high_price']
-      threshold_price = high_price * (1.0 - margin_rate)
-      log(logfile, "High Price: " + str(high_price) + " at candle " + str(candle_date_time_kst).replace("T", " "))
-      log(logfile, "Threshold Price: " + str(threshold_price))
-      found = True
+        candle_date_time_kst = str(dict['candle_date_time_kst']).replace("T", " ")
+        found1 = True
 
-  if found:
+  if found1:
+    log(logfile, str(candle_date_time_kst) \
+        + ": " + str(last_low_price) + " (" + str(1.0 - (last_low_price / last_high_price)) + ")")
+
+  found2 = False
+  for dict in tmp:
+    high_price = dict['high_price']
+    if last_high_price < high_price:
+      candle_date_time_kst=dict['candle_date_time_kst']
+      last_high_price = high_price
+      threshold_price = last_high_price * (1.0 - margin_rate)
+      found2 = True
+
+  if found2:
+    log(logfile, "High Price: " + str(last_high_price) + " at candle " + str(candle_date_time_kst).replace("T", " "))
+    log(logfile, "Threshold Price: " + str(threshold_price))
+
+  if found1 or found2:
     logfile.flush()
 
 ## Main
@@ -80,7 +90,7 @@ TIMEOUT_3MIN = 180
 currency='ETH';
 margin_rate = 0.05
 
-high_price = 0.0
+last_high_price = 0.0
 threshold_price = 0.0
 
 last_low_price = 0.0
